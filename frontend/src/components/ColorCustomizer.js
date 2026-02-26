@@ -9,9 +9,12 @@ import { useSubscription } from '../context/SubscriptionContext';
 import { FREE_COLORS, PREMIUM_COLORS } from '../data/sneakerOptions';
 
 const COLOR_ZONES = [
-  { id: 'upper', label: 'Upper', description: 'Main body and sides' },
+  { id: 'upper', label: 'Upper', description: 'Main body and sides (all Main Bodies)' },
   { id: 'sole', label: 'Sole', description: 'Bottom and midsole' },
-  { id: 'accent', label: 'Accents', description: 'Details and highlights' },
+  { id: 'accent', label: 'Logos', description: 'Nike & Air logos' },
+  { id: 'midsoleRim', label: 'Rims', description: 'Midsole & toe rim' },
+  { id: 'heel', label: 'Heel', description: 'Heel area' },
+  { id: 'laces', label: 'Laces', description: 'Shoelaces' },
 ];
 
 export function ColorCustomizer() {
@@ -64,7 +67,7 @@ export function ColorCustomizer() {
               const zoneColor = design.layerColors[zone.id];
               
               return (
-                <div key={zone.id} className="col-12 col-md-4">
+                <div key={zone.id} className="col-12 col-sm-6 col-lg-4">
                   <button
                     type="button"
                     className={`btn w-100 text-start ${

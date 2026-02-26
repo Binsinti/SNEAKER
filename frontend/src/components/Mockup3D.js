@@ -1,6 +1,7 @@
 /**
  * Sneakr.lab - DATASTALGO
  * 3D sneaker mockup with rotation and real-time design preview
+ * Updated: Mesh-based coloring only
  */
 
 import { useRef, useState, Suspense, useEffect, useMemo } from 'react';
@@ -15,84 +16,106 @@ import { getDesignTexture, getDesignOverrides } from '../utils/designTextures';
 /** Target size so every model fits the viewport the same way */
 const NORMALIZED_SIZE = 2;
 
-function applyLayerColorsToScene(scene, designId, layerColors, modelId) {
+function applyLayerColorsToScene(scene, designId, layerColors) {
+  console.log('🎨 === COLOR APPLICATION START ===');
+  console.log('Layer Colors:', layerColors);
+  
   const texture = getDesignTexture(designId, layerColors.accent);
   const overrides = getDesignOverrides(designId, layerColors.accent);
-
-  // Calculate bounding box for the entire scene
-  const sceneBBox = new THREE.Box3().setFromObject(scene);
-  const sceneMin = sceneBBox.min.y;
-  const sceneMax = sceneBBox.max.y;
-  const sceneHeight = sceneMax - sceneMin;
   
   scene.traverse((child) => {
     if (!(child instanceof THREE.Mesh)) return;
     
-    const geometry = child.geometry;
+    // Skip Object_2 mesh
+    if (child.name && child.name.toLowerCase().includes('object_2')) {
+      console.log(`⏭️ Skipping mesh: "${child.name}"`);
+      return;
+    }
     
-    // Apply vertex colors based on Y position for gradient effect
-    if (geometry.attributes.position) {
-      const positions = geometry.attributes.position;
-      const colors = new Float32Array(positions.count * 3);
-      
-      const soleColor = new THREE.Color(layerColors.sole);
-      const upperColor = new THREE.Color(layerColors.upper);
-      const accentColor = new THREE.Color(layerColors.accent);
-      
-      // Model-specific coloring profiles
-      let soleEnd = 0.25;
-      let soleBlendZone = 0.35;
-      let upperEnd = 0.8;
-      let accentBlendZone = 0.9;
-      
-      if (modelId === 'classic-1') {
-        // Classic Low: More defined sole, larger upper area
-        soleEnd = 0.20;
-        soleBlendZone = 0.28;
-        upperEnd = 0.82;
-        accentBlendZone = 0.92;
-      } else if (modelId === 'new-balance-574') {
-        // New Balance 574: Chunkier sole, more accent on collar
-        soleEnd = 0.30;
-        soleBlendZone = 0.40;
-        upperEnd = 0.75;
-        accentBlendZone = 0.85;
-      }
-      
-      // Apply colors per vertex based on height
-      for (let i = 0; i < positions.count; i++) {
-        const y = positions.getY(i);
-        const relativeHeight = sceneHeight > 0 
-          ? (y - sceneMin) / sceneHeight 
-          : 0.5;
+    // Log mesh names for debugging
+    console.log(`\n📦 Found mesh: "${child.name || 'unnamed'}"`);
+    
+    const meshName = (child.name || '').toLowerCase();
+    let targetColor = null;
+    let zoneName = '';
+    
+    // Map mesh names to color zones - ORDER MATTERS!
+    // Check most specific patterns first
+    
+    // Rims zone: Midsole rim & toe rim combined (check for 'rim' in name)
+    if (meshName.includes('rim')) {
+      targetColor = layerColors.midsoleRim;
+      zoneName = 'RIMS (midsoleRim)';
+    }
+    // Toe Rim specifically
+    else if (meshName.includes('toe')) {
+      targetColor = layerColors.midsoleRim;
+      zoneName = 'RIMS (toe)';
+    }
+    // Heel zone: Heel area (check BEFORE sole to avoid conflicts)
+    else if (meshName.includes('heel')) {
+      targetColor = layerColors.heel;
+      zoneName = 'HEEL';
+    } 
+    // Sole zone: Bottom and midsole (but not midsole rim)
+    else if (meshName.includes('sole') || meshName.includes('midsole')) {
+      targetColor = layerColors.sole;
+      zoneName = 'SOLE';
+    } 
+    // Laces zone - All laces (Laces, Laces2, Laces3, Laces4, etc.)
+    else if (meshName.includes('lace')) {
+      targetColor = layerColors.laces;
+      zoneName = 'LACES';
+    } 
+    // Logos zone: Nike & Air logos combined
+    else if (meshName.includes('logo')) {
+      targetColor = layerColors.accent;
+      zoneName = 'LOGOS (logo)';
+    }
+    else if (meshName.includes('air')) {
+      targetColor = layerColors.accent;
+      zoneName = 'LOGOS (air)';
+    }
+    else if (meshName.includes('swoosh') || meshName.includes('accent')) {
+      targetColor = layerColors.accent;
+      zoneName = 'LOGOS (swoosh/accent)';
+    }
+    // Upper zone: All Main Body meshes (Main Body1, Main Body2, Main Body3, etc.)
+    else if (meshName.includes('main') && meshName.includes('body')) {
+      targetColor = layerColors.upper;
+      zoneName = 'UPPER (Main Body)';
+    } 
+    // Upper zone fallback: Other upper parts
+    else if (meshName.includes('upper')) {
+      targetColor = layerColors.upper;
+      zoneName = 'UPPER';
+    } 
+    // Default: unnamed objects go to upper color
+    else {
+      targetColor = layerColors.upper;
+      zoneName = 'UPPER (default)';
+    }
+    
+    console.log(`  ✅ Zone: ${zoneName}`);
+    console.log(`  🎨 Color: ${targetColor}`);
+    
+    if (targetColor) {
+      const geometry = child.geometry;
+      if (geometry.attributes.position) {
+        const positions = geometry.attributes.position;
+        const colors = new Float32Array(positions.count * 3);
+        const color = new THREE.Color(targetColor);
         
-        let color;
-        if (relativeHeight < soleEnd) {
-          // Bottom zone = pure sole color
-          color = soleColor;
-        } else if (relativeHeight < soleBlendZone) {
-          // Transition zone = blend sole to upper
-          const blend = (relativeHeight - soleEnd) / (soleBlendZone - soleEnd);
-          color = new THREE.Color().lerpColors(soleColor, upperColor, blend);
-        } else if (relativeHeight < upperEnd) {
-          // Middle zone = upper color
-          color = upperColor;
-        } else if (relativeHeight < accentBlendZone) {
-          // Transition zone = blend upper to accent
-          const blend = (relativeHeight - upperEnd) / (accentBlendZone - upperEnd);
-          color = new THREE.Color().lerpColors(upperColor, accentColor, blend);
-        } else {
-          // Top zone = accent color
-          color = accentColor;
+        // Apply uniform color to all vertices
+        for (let i = 0; i < positions.count; i++) {
+          colors[i * 3] = color.r;
+          colors[i * 3 + 1] = color.g;
+          colors[i * 3 + 2] = color.b;
         }
         
-        colors[i * 3] = color.r;
-        colors[i * 3 + 1] = color.g;
-        colors[i * 3 + 2] = color.b;
+        geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+        geometry.attributes.color.needsUpdate = true;
       }
-      
-      geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-      geometry.attributes.color.needsUpdate = true;
     }
     
     // Handle both single material and material arrays
@@ -177,8 +200,8 @@ function ShoeModel({ asset, modelId, designId, layerColors, hasWatermark }) {
       }
     });
     
-    applyLayerColorsToScene(clonedScene, designId, layerColors, modelId);
-  }, [clonedScene, designId, layerColors, modelId]);
+    applyLayerColorsToScene(clonedScene, designId, layerColors);
+  }, [clonedScene, designId, layerColors]);
 
   const rotX = asset.rotationX ?? 0;
 
@@ -279,3 +302,5 @@ export function Mockup3D() {
     </section>
   );
 }
+
+
